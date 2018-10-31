@@ -257,7 +257,7 @@ int main(int argc, char** argv){
 
     if(argc == 2){
         printf("%s\n", argv[1]);
-    if(strcmp(argv[1], "-n")){
+    if(strcmp(argv[1], "-n") == 0){
         printf("--- Menu pre spustenie s prepinacom '-n'  ---\n");
         printf("f g\t-\tfraktal++ fraktal--\n");
         printf("l k\t-\tthreads++ thread--\n");
