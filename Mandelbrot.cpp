@@ -1,16 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include <glut.h>  // GLUT, includes glu.h and gl.h
+#include <GL/glut.h>  // GLUT, includes glu.h and gl.h
 #include <stdbool.h>
 #include <math.h>
 
 #define width XXX //1 920
 #define height YYY //1 080
 
-#define Num_of_threads 4;
-
 SYSTEM_INFO sysinfo;
+
+bool normal = false;
+bool compare = false;
+int num_of_cores = 0;
 
 typedef struct{
 	GLbyte r, g, b;
@@ -28,7 +30,7 @@ typedef struct{
 DATA data;
 GLuint texture;
 
-void *RenderFrame( void* ptr){
+void *RenderFrame(void* ptr){
 
 	//bottom border
 	int id = (int) ptr;
@@ -80,7 +82,7 @@ void *RenderFrame( void* ptr){
 			}
 		}
     }
-	return NULL;
+    return NULL;
 }
 
 // Generate and display the image.
@@ -88,30 +90,32 @@ void display(){
 
     DWORD start, end;
     pthread_t workers[100000];
-	// Call user image generation
-    int z, prev_time = 0, i;
-    int zlepsenie, best = 10000000, best_num_of_thread, sek;
-    for(z = 0; z < 10; z++){
-    data.thread_count = z+1;
+    if(normal){
     start = GetTickCount();
-    for (i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
-	for (i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
+    for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
+    for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
 	end = GetTickCount();
-	prev_time = end - start;
-	if(z == 0){
-        sek = prev_time;
-	}
-	zlepsenie = (best - (end - start));
-    if(prev_time < best){
-        if(prev_time + 2 < best){ //konstanta, kvoli OS
-        best_num_of_thread = z+1;
-        }
-        best = prev_time;
-	}
-	int cas = end - start;
-    printf("pocet threadov:%d -> %dms, zlepsenie: %dms\n", z+1, cas, zlepsenie);
+	int t = end-start;
+	printf("Cas sekvencneho vykonavania operacie: %d\n", t);
     }
-    printf("\n\n Architektura pocitaca:\n%d - threadov\n",best_num_of_thread);
+    if(compare){
+    int count_threads = data.thread_count;
+    data.thread_count = 1;
+    start = GetTickCount();
+    for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
+    for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
+	end = GetTickCount();
+	int sek = end-start;
+	printf("Cas sekvencneho vykonavania operacie: %d\n", sek);
+	data.thread_count = count_threads;
+	start = GetTickCount();
+    for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
+    for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
+	end = GetTickCount();
+	int paralel = end-start;
+	printf("Cas paralelneho vykonavania operacie: %d\n", paralel);
+	printf("Casove zlepsenie: %d", sek-paralel);
+    }
 
 	// Copy image to texture memory
 	glBindTexture(GL_TEXTURE_2D, texture);
@@ -167,13 +171,17 @@ void keypress(unsigned char key, int x, int y){
 		break;
 	case 'L':
 	case 'l':
-		data.thread_count += 1;
-		printf("\nThreads:\t%d\n",data.thread_count);
+        if(normal){
+            data.thread_count += 1;
+            printf("\nThreads:\t%d\n",data.thread_count);
+        }
 		break;
 	case 'K':
 	case 'k':
-		if (data.thread_count > 1) data.thread_count -= 1;
-		printf("\nThreads:\t%d\n",data.thread_count);
+        if(normal){
+            if (data.thread_count > 1) data.thread_count -= 1;
+                printf("\nThreads:\t%d\n",data.thread_count);
+        }
 		break;
 	case 'W':
 	case 'w':
@@ -225,8 +233,65 @@ void init(){
 	glColor3f(1, 1, 1);
 }
 
+void help(){
+
+    printf("Vita ta program pre vypocet a vykreslovanie mandelbrotovej mnoziny.\n");
+    printf("Program je mozne spustat s tymito prepinacmi:\n\n");
+    printf("-n :\n");
+    printf("--- Menu pre spustenie s prepinacom: '-n' ---\n");
+    printf("f g\t-\tfraktal++ fraktal--\n");
+    printf("l k\t-\tthreads++ thread--\n");
+    printf("i\t-\tzoom in\n");
+    printf("o\t-\tzoom out\n");
+    printf("w a s d\t-\tpohyb\n");
+    printf("-c :\n");
+    printf("--- Menu pre spustenie s prepinacom '-c' ---\n");
+    printf("f g\t-\tfraktal++ fraktal--\n");
+    printf("i\t-\tzoom in\n");
+    printf("o\t-\tzoom out\n");
+    printf("w a s d\t-\tpohyb\n");
+}
+
 /* Main function: GLUT runs as a console application starting at main()  */
 int main(int argc, char** argv){
+
+    if(argc == 2){
+        printf("%s\n", argv[1]);
+    if(strcmp(argv[1], "-n")){
+        printf("--- Menu pre spustenie s prepinacom '-n'  ---\n");
+        printf("f g\t-\tfraktal++ fraktal--\n");
+        printf("l k\t-\tthreads++ thread--\n");
+        printf("i\t-\tzoom in\n");
+        printf("o\t-\tzoom out\n");
+        printf("w a s d\t-\tpohyb\n");
+        normal = true;
+        data.thread_count = 1;
+
+    }
+    else if(strcmp(argv[1], "-c") == 0){
+        printf("Spustene porovnavacie vykonavanie\n");
+        GetSystemInfo(&sysinfo);
+        int num_of_cores = sysinfo.dwNumberOfProcessors;
+        printf("Architektura procesora: %d-jadrova\n", num_of_cores);
+        data.thread_count = sysinfo.dwNumberOfProcessors;
+        printf("--- Menu pre spustenie s prepinacom '-c' ---\n");
+        printf("f g\t-\tfraktal++ fraktal--\n");
+        printf("i\t-\tzoom in\n");
+        printf("o\t-\tzoom out\n");
+        printf("w a s d\t-\tpohyb\n");
+        compare = true;
+    }
+    else{
+    printf("Neexistujuci argument!\n");
+    help();
+    return 0;
+    }
+    }
+    else{
+    printf("Nespravny pocet argumentov\n");
+    help();
+    return 0;
+    }
 
 	data.real_min = -2.9; //left border
 	data.real_max = 1.4; //right border
@@ -234,14 +299,6 @@ int main(int argc, char** argv){
 	data.img_max = data.img_min + (data.real_max - data.real_min)*height / width;
 
 	data.iterations = XXX; //50
-	data.thread_count = sysinfo.dwNumberOfProcessors;
-
-    printf("--- Menu ---\n");
-    printf("f g\t-\tfraktal++ fraktal--\n");
-    printf("l k\t-\tthreads++ thread--\n");
-    printf("i\t-\tzoom in\n");
-    printf("o\t-\tzoom out\n");
-    printf("w a s d\t-\tpohyb\n");
 
     // Init GLUT
     glutInit(&argc, argv);

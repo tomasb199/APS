@@ -1,4 +1,4 @@
-CC		= g++
+CC		= gcc
 CFLAGS	= -O3 -Wall -Wno-deprecated -IGL
 UNAME := $(shell uname -s)
 
