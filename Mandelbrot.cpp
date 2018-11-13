@@ -4,15 +4,27 @@
 #include <GL/glut.h>  // GLUT, includes glu.h and gl.h
 #include <stdbool.h>
 #include <math.h>
+#include <ctype.h>
 
 #define width XXX //1 920
 #define height YYY //1 080
 
 SYSTEM_INFO sysinfo;
-
+//Variables for arguments
 bool normal = false;
+bool nor = false;
 bool compare = false;
+bool sec = false;
+bool paralel = false;
+bool threads_test = false;
+//Variables for time measurement
+int in = 0;
 int num_of_cores = 0;
+int total_time = 0;
+int total_time_sec = 0;
+int total_time_paralel = 0;
+int best_time = 0;
+int best_count_thread;
 
 typedef struct{
 	GLbyte r, g, b;
@@ -36,12 +48,11 @@ void *RenderFrame(void* ptr){
 	int id = (int) ptr;
 	data.real_factor = (data.real_max - data.real_min) / (width - 2);
     data.imag_factor = (data.img_max - data.img_min) / (height - 2);
-	double d = (double)data.iterations / 4096; //256
+	double d = (double)data.iterations / 4096;
 
 	int y = 0, x = 0;
-
+    //Lines of compute image(one lines, one thread)
 	for (y = id; y < height; y += data.thread_count){
-
 		int n;
 		double c_im, c_re;
 		bool isInside;
@@ -49,10 +60,9 @@ void *RenderFrame(void* ptr){
 
 		for (x = 0; x < width; x++){
             c_re = data.real_min + x*data.real_factor;
-
 			double Z_re = c_re, Z_im = c_im;
 			isInside = true;
-
+            //Mandelbrot set recursion
 			for (n = 0; n<data.iterations; n++){
                 double Z_re2 = Z_re*Z_re, Z_im2 = Z_im*Z_im;
 				if (Z_re2 + Z_im2 > 4){
@@ -90,31 +100,56 @@ void display(){
 
     DWORD start, end;
     pthread_t workers[100000];
-    if(normal){
-    start = GetTickCount();
-    for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
-    for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
-	end = GetTickCount();
-	int t = end-start;
-	printf("Cas sekvencneho vykonavania operacie: %d\n", t);
+
+    if(normal || threads_test){
+        //Function for Normal Mode and Thread test Mode
+
+        start = GetTickCount();
+        for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
+        for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
+        end = GetTickCount();
+        int t = end-start;
+        if(normal){
+            printf("Cas vykonavania operacie: %d\n", t);
+            total_time+= t;
+        }
+        if(threads_test){
+            printf("Cas vykonavania pri pocte threadov: %d -> %d\n", data.thread_count, t);
+
+            if(t < best_time){
+                best_time = t;
+                best_count_thread = data.thread_count;
+            }
+        }
     }
     if(compare){
-    int count_threads = data.thread_count;
-    data.thread_count = 1;
-    start = GetTickCount();
-    for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
-    for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
-	end = GetTickCount();
-	int sek = end-start;
-	printf("Cas sekvencneho vykonavania operacie: %d\n", sek);
-	data.thread_count = count_threads;
-	start = GetTickCount();
-    for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
-    for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
-	end = GetTickCount();
-	int paralel = end-start;
-	printf("Cas paralelneho vykonavania operacie: %d\n", paralel);
-	printf("Casove zlepsenie: %d", sek-paralel);
+        //Function for Compare Mode
+
+        int count_threads = data.thread_count;
+        data.thread_count = 1;
+
+        start = GetTickCount();
+        for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
+        for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
+        end = GetTickCount();
+        int sek = end-start;
+
+        printf("Cas sekvencneho vykonavania operacie: %d\n", sek);
+        total_time_sec += sek;
+        data.thread_count = count_threads;
+
+        start = GetTickCount();
+        for (int i = 0; i < data.thread_count; i++) pthread_create(&workers[i], NULL, &RenderFrame, (void*) i);
+        for (int i = 0; i < data.thread_count; i++) pthread_join(workers[i], NULL);
+        end = GetTickCount();
+        int paralel = end-start;
+
+        printf("Cas paralelneho vykonavania operacie: %d\n", paralel);
+
+        total_time_paralel += paralel;
+        double zrychlenie = (double) total_time_sec/total_time_paralel;
+        printf("Celkovy cas sekvencneho vypoctu: %dms\nCelkovy cas paralelneho vypoctu: %dms\nZrychlenie: %lfx\n",total_time_sec, total_time_paralel, zrychlenie);
+
     }
 
 	// Copy image to texture memory
@@ -139,10 +174,9 @@ void display(){
 	glutSwapBuffers();
 
 }
-
+//Function for keybord input
 void keypress(unsigned char key, int x, int y){
 
-	printf("\n%c ------------\n", key);
 	double real_diff = fabs(data.real_min - data.real_max) * 0.05;
 	double img_diff = fabs(data.img_min - data.img_max) * 0.05;
 
@@ -171,7 +205,7 @@ void keypress(unsigned char key, int x, int y){
 		break;
 	case 'L':
 	case 'l':
-        if(normal){
+        if(normal || threads_test){
             data.thread_count += 1;
             printf("\nThreads:\t%d\n",data.thread_count);
         }
@@ -234,30 +268,20 @@ void init(){
 }
 
 void help(){
-
     printf("Vita ta program pre vypocet a vykreslovanie mandelbrotovej mnoziny.\n");
     printf("Program je mozne spustat s tymito prepinacmi:\n\n");
-    printf("-n :\n");
-    printf("--- Menu pre spustenie s prepinacom: '-n' ---\n");
-    printf("f g\t-\tfraktal++ fraktal--\n");
-    printf("l k\t-\tthreads++ thread--\n");
-    printf("i\t-\tzoom in\n");
-    printf("o\t-\tzoom out\n");
-    printf("w a s d\t-\tpohyb\n");
-    printf("-c :\n");
-    printf("--- Menu pre spustenie s prepinacom '-c' ---\n");
-    printf("f g\t-\tfraktal++ fraktal--\n");
-    printf("i\t-\tzoom in\n");
-    printf("o\t-\tzoom out\n");
-    printf("w a s d\t-\tpohyb\n");
+    printf("-n : Normal mode\n---Spusti sekvencne vykonavanie+interakcia pomocou klavesnice---\n");
+    printf("-c : Compare mode\n---Spusti sucasne sekvencne a paralelne vykonavanie+interakcia pomocou klavesnice---\n");
+    printf("-t cislo: Thread test\n");
+    printf("---Program otestuje cas vykonavania vypoctu na <1,cislo> threadoch---\n");
+    printf("-p cislo: Zooming test\n");
+    printf("--- Program otestuje cas vykonavania <1,cislo> priblizenie a oddialeni ---\n");
 }
+//Set program by arguments
+void set_program_mode(int argc, char** argv){
 
-/* Main function: GLUT runs as a console application starting at main()  */
-int main(int argc, char** argv){
-
-    if(argc == 2){
-        printf("%s\n", argv[1]);
-    if(strcmp(argv[1], "-n") == 0){
+    for(int j = 1; j < argc; j+=2){
+    if(strcmp(argv[j], "-n") == 0){
         printf("--- Menu pre spustenie s prepinacom '-n'  ---\n");
         printf("f g\t-\tfraktal++ fraktal--\n");
         printf("l k\t-\tthreads++ thread--\n");
@@ -266,6 +290,11 @@ int main(int argc, char** argv){
         printf("w a s d\t-\tpohyb\n");
         normal = true;
         data.thread_count = 1;
+        //Main exec. loop
+        display();
+        glutKeyboardFunc(keypress);
+        glutMainLoop();
+        break;
 
     }
     else if(strcmp(argv[1], "-c") == 0){
@@ -280,25 +309,72 @@ int main(int argc, char** argv){
         printf("o\t-\tzoom out\n");
         printf("w a s d\t-\tpohyb\n");
         compare = true;
+        //Main exec. loop
+        display();
+        glutKeyboardFunc(keypress);
+        glutMainLoop();
+        break;
+    }
+    else if(strcmp(argv[j], "-s") == 0 && isdigit(argv[j+1][0])){
+        in = atoi(argv[j+1]);
+        data.thread_count = 1;
+        normal = true;
+        total_time = 0;
+        for(int i = 0; i < in; i++){
+        keypress('i',0,0);
+        }
+        for(int i = in; 0 < i; i--){
+        keypress('o',0,0);
+        }
+        printf("Total execution time: %d\n", total_time);
+    }
+    else if(strcmp(argv[j], "-p") == 0 && isdigit(argv[j+1][0])){
+        in = atoi(argv[j+1]);
+        GetSystemInfo(&sysinfo);
+        data.thread_count = sysinfo.dwNumberOfProcessors;
+        normal = true;
+        total_time = 0;
+        for(int i = 0; i < in; i++){
+        keypress('i',0,0);
+        }
+        for(int i = in; 0 < i; i--){
+        keypress('o',0,0);
+        }
+        printf("Total execution time: %d\n", total_time);
+    }
+    else if(strcmp(argv[j], "-t") == 0 && isdigit(argv[j+1][0])){
+        in = atoi(argv[j+1]);
+        data.thread_count = 1;
+        best_time = 100000;
+        threads_test = true;
+        display();
+        for(int i = 1; i < in; i++){
+        keypress('l',0,0);
+        }
+        //printf("Total time of execution: %d", total_time_sec-total_time_paralel);
+        printf("Best time: %d and threads: %d\n", best_time, best_count_thread);
+    }
+    else if(strcmp(argv[j], "-h") == 0){
+        help();
     }
     else{
-    printf("Neexistujuci argument!\n");
-    help();
-    return 0;
+        printf("Neexistujuci argument!\n");
+        help();
+        break;
     }
     }
-    else{
-    printf("Nespravny pocet argumentov\n");
-    help();
-    return 0;
-    }
+
+}
+
+/* Main function: GLUT runs as a console application starting at main()  */
+int main(int argc, char** argv){
 
 	data.real_min = -2.9; //left border
 	data.real_max = 1.4; //right border
 	data.img_min = -1.5; //top border
 	data.img_max = data.img_min + (data.real_max - data.real_min)*height / width;
 
-	data.iterations = XXX; //50
+	data.iterations = 850;
 
     // Init GLUT
     glutInit(&argc, argv);
@@ -307,12 +383,8 @@ int main(int argc, char** argv){
     glutCreateWindow("OpenGL Window");
 
     init();
-    // Run the control loop
-    display();
-    glutKeyboardFunc(keypress);
 
-    //Main exec. loop
-    glutMainLoop();
+    set_program_mode(argc, argv);
 
 	return EXIT_SUCCESS;
 }
